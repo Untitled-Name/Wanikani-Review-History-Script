@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Wanikani Review History
+// @name         WaniKani Review Answer History DEV
 // @namespace    http://tampermonkey.net/
 // @version      0.1
 // @description  Displays the history of answers for each item in review sessions
@@ -74,7 +74,7 @@ const addToLocalStorage = (answer, itemType, item, status, language, override) =
         WKAnswerHistory[itemType][item].answers.push(answer);
         WKAnswerHistory[itemType][item].timestamps.push(getTimestamp());
         WKAnswerHistory[itemType][item].itemStatus.push(status);
-        WKAnswerHistory[itemType][item].SRSLevel.push(getItemSRS());
+        WKAnswerHistory[itemType][item].SRSLevel.push(getItemSRS("srs"));
         WKAnswerHistory[itemType][item].language.push(lang);
     } else {
         WKAnswerHistory[itemType][item].itemStatus[WKAnswerHistory[itemType][item].itemStatus.length - 1] = status;
@@ -97,10 +97,14 @@ const getTimestamp = () => {
 }
 
 // Gets the current item's SRS level if WKOF is installed
-const getItemSRS = () => {
+const getItemSRS = (request) => {
     let review_item = $.jStorage.get('currentItem');
     let item = items_by_id[review_item.id];
-    return getSRSLevel(item)
+    if (request === "srs"){
+        return getSRSLevel(item);
+    } else if (request === "item"){
+        return item;
+    }
 }
 
 // *Actually* gets the current item's SRS level (the level the item is being reviewed at)
@@ -111,7 +115,15 @@ const statusChecker = (fieldsetElem, lastClass) => {
     observer = new MutationObserver((mutationsList) => {
 
         let itemType = itemElem.classList[0];
-        let item = itemElem.innerText;
+        let item;
+        if (document.getElementById("strokeChar")){
+            item = document.getElementById("character").querySelector("span").innerText;
+        } else {
+            item = itemElem.innerText;
+        }
+        if (itemType === "radical"){
+            item = getItemSRS("item");
+        }
         let answer = input.value;
         let lang = input.getAttribute("lang");
 
@@ -229,10 +241,12 @@ const srs = (srsKey) => {
 
 function initiate() {
     'use strict';
-    console.log(WKAnswerHistory);
+
     // Checks for the review page to collect answer data
     if (/\/review\/session+/.test(url)){
-        input = document.querySelector('input');
+        if (document.querySelector('input').classList.contains("popup-input")){
+            input = document.querySelectorAll('input')[1];
+        } else {input = document.querySelector('input')}
         itemElem = document.getElementById("character");
 
         let fieldsetElem = input.parentElement;
@@ -243,9 +257,23 @@ function initiate() {
     // Checks for an item info page to display the data
     if (/\/radicals\/+/.test(url) || /\/kanji\/+/.test(url) || /\/vocabulary\/+/.test(url)){
 
+        console.log(WKAnswerHistory);
         // Gets the page's item from the URL
         const pageItem = decodeURI(url.substring(url.lastIndexOf("/") + 1));
         const itemType = url.substring(url.indexOf("wanikani.com/") + 13, url.lastIndexOf("/"));
+
+        // Adds navigation button to top bar
+        const history_li = document.createElement("li");
+        const history_a = document.createElement("a");
+        history_a.innerText = "Review History";
+        history_a.setAttribute("href", "#history");
+        history_li.appendChild(history_a);
+        if (document.querySelector("[href='#progress']")){
+            let progress_li = document.querySelector("[href='#progress']").parentNode;
+            document.querySelector(".page-list-header").parentNode.insertBefore(history_li, progress_li);
+        } else {
+            document.querySelector(".page-list-header").parentNode.appendChild(history_li);
+        }
 
         // Section element for the review history
         const reviewHistorySection = document.createElement("section");
