@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         WaniKani Review Answer History
+// @name         WaniKani Review Answer History DEV
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.3
 // @description  Displays the history of answers for each item in review sessions
 // @author       Wantitled
 // @match        https://www.wanikani.com/*
@@ -26,13 +26,47 @@ var input;
 var itemElem;
 const url = window.location.href;
 let item, items_by_id;
+let bySlug;
+let pageItem;
 
 // Item data only needed for review sessions
-if (/\/review\/session+/.test(url)){
-    wkof.include('ItemData');
-    wkof.ready('ItemData').then(get_history).then(get_items).then(initiate);
-} else if (/\/radicals\/+/.test(url) || /\/kanji\/+/.test(url) || /\/vocabulary\/+/.test(url)){
-    get_history().then(initiate);
+wkof.include('ItemData');
+wkof.ready('ItemData').then(get_history).then(get_items).then(check_history_data).then(initiate);
+
+async function check_history_data() {
+    if (WKAnswerHistory["radicals"]){
+        console.log("Old item type name found, renaming to 'radical'.");
+        WKAnswerHistory["radical"] = WKAnswerHistory["radicals"];
+        delete WKAnswerHistory["radicals"];
+        wkof.file_cache.save("WKAnswerHistory", WKAnswerHistory);
+    }
+    if ((/\D/.test(Object.keys(WKAnswerHistory["radical"])[0]) && Object.keys(WKAnswerHistory["radical"]).length > 0 )
+        || (/\D/.test(Object.keys(WKAnswerHistory["kanji"])[0]) && Object.keys(WKAnswerHistory["kanji"]).length > 0 )
+        || (/\D/.test(Object.keys(WKAnswerHistory["vocabulary"])[0]) && Object.keys(WKAnswerHistory["vocabulary"]).length > 0)){
+        alert("Old item name(s) found, please wait a moment...");
+        wkof.file_cache.save("WKAnswerHistory_backup", WKAnswerHistory);
+        bySlug = wkof.ItemData.get_index(item, "slug");
+        for (let item_type in WKAnswerHistory){
+            for (let item_slug in WKAnswerHistory[item_type]){
+                if (/\D/.test(item_slug)){
+                    let item_id = get_id(item_slug, item_type);
+                    WKAnswerHistory[item_type][item_id] = WKAnswerHistory[item_type][item_slug];
+                    delete WKAnswerHistory[item_type][item_slug];
+                }
+            }
+        }
+        wkof.file_cache.save("WKAnswerHistory", WKAnswerHistory);
+        alert("Items converted!");
+    }
+}
+
+const get_id = (slug, type) => {
+    const matches = bySlug[slug];
+    if (Array.isArray(matches)) {
+        return matches.find(m => m.object === type)?.id;
+    } else {
+        return matches?.id;
+    }
 }
 
 // Gets the answer history
@@ -46,10 +80,6 @@ async function get_history () {
         }
     } else {
         WKAnswerHistory = await wkof.file_cache.load("WKAnswerHistory");
-        if (WKAnswerHistory["radicals"]){
-            WKAnswerHistory["radical"] = WKAnswerHistory["radicals"];
-            delete WKAnswerHistory["radicals"];
-        }
     }
 }
 
@@ -60,8 +90,7 @@ async function get_items() {
 }
 
 // Adds the input to the item history object
-const addToLocalStorage = (answer, itemType, item, status, language, override) => {
-
+const save_data = (answer, itemType, item, status, language, override) => {
     if (!WKAnswerHistory[itemType][item]){
         WKAnswerHistory[itemType][item] = {
             "answers": [],
@@ -81,7 +110,7 @@ const addToLocalStorage = (answer, itemType, item, status, language, override) =
         WKAnswerHistory[itemType][item].answers.push(answer);
         WKAnswerHistory[itemType][item].timestamps.push(getTimestamp());
         WKAnswerHistory[itemType][item].itemStatus.push(status);
-        WKAnswerHistory[itemType][item].SRSLevel.push(returnItemInfo("srs"));
+        WKAnswerHistory[itemType][item].SRSLevel.push(returnItemInfo());
         WKAnswerHistory[itemType][item].language.push(lang);
     } else {
         WKAnswerHistory[itemType][item].itemStatus[WKAnswerHistory[itemType][item].itemStatus.length - 1] = status;
@@ -104,11 +133,21 @@ const getTimestamp = () => {
 }
 
 // Gets current item data
-const returnItemInfo = (info) => {
+const returnItemInfo = () => {
     let review_item = $.jStorage.get('currentItem');
     let item = items_by_id[review_item.id];
-    if (info === "srs"){return getSRSLevel(item)}
-    else if (info === "item_slug"){return item.data.slug}
+    return getSRSLevel(item)
+}
+
+const additional_info = (item, info) => {
+    let item_obj = items_by_id[item];
+    switch (info){
+        case "unlock": return item_obj?.assignments?.unlocked_at;break;
+        case "lesson": return item_obj?.assignments?.started_at;break;
+        case "guru": return item_obj?.assignments?.passed_at;break;
+        case "burn": return item_obj?.assignments?.burned_at;break;
+        case "resurrect": return item_obj?.assignments?.resurrected_at;break;
+    }
 }
 
 // Gets the current item's SRS level (the level the item is being reviewed at)
@@ -119,7 +158,7 @@ const statusChecker = (fieldsetElem, lastClass) => {
     observer = new MutationObserver((mutationsList) => {
 
         let itemType = itemElem.classList[0];
-        let item = returnItemInfo("item_slug");
+        let item = $.jStorage.get('currentItem').id;
         let answer = input.value;
         let lang = input.getAttribute("lang");
 
@@ -130,14 +169,14 @@ const statusChecker = (fieldsetElem, lastClass) => {
                     if (lastClass === undefined) {
                         lastClass = currentClass
                         switch (currentClass){
-                            case "correct": addToLocalStorage(answer, itemType, item, currentClass, lang, false);break;
-                            case "incorrect": addToLocalStorage(answer, itemType, item, currentClass, lang, false);break;
+                            case "correct": save_data(answer, itemType, item, currentClass, lang, false);break;
+                            case "incorrect": save_data(answer, itemType, item, currentClass, lang, false);break;
                         }
                     } else {
                         switch (currentClass){
-                            case "correct": addToLocalStorage(answer, itemType, item, currentClass, lang, true);break;
-                            case "incorrect": addToLocalStorage(answer, itemType, item, currentClass, lang, true);break;
-                            case "WKO_ignored": addToLocalStorage(answer, itemType, item, currentClass, lang, true);break;
+                            case "correct": save_data(answer, itemType, item, currentClass, lang, true);break;
+                            case "incorrect": save_data(answer, itemType, item, currentClass, lang, true);break;
+                            case "WKO_ignored": save_data(answer, itemType, item, currentClass, lang, true);break;
                             default: break;
                         }
                     }
@@ -171,8 +210,19 @@ const createHeaders = () => {
 }
 
 // Creates the table rows and inserts the data for the item page table
-const buildTable = (itemObj, tbody) => {
+const buildTable = (itemObj, tbody) => {;
+    let milestones = get_milestones(pageItem);
+    console.log(milestones);
     for (let i = itemObj.answers.length - 1; i >= 0; i--){
+        for (let j = milestones.milestone_time.length - 1; j >= 0; j--){
+            let time_obj = new Date(milestones.milestone_time[j]);
+            if (convertTime(itemObj.timestamps[i]).getTime() < time_obj.getTime()){
+                let milestone_tr = construct_milestone(milestones.milestone_name[j], milestones.milestone_time[j]);
+                tbody.appendChild(milestone_tr);
+                milestones.milestone_name.pop();
+                milestones.milestone_time.pop();
+            }
+        }
 
         let tr = document.createElement("tr");
         tr.style.backgroundColor = getColor(itemObj.itemStatus[i]);
@@ -200,6 +250,14 @@ const buildTable = (itemObj, tbody) => {
         tr.appendChild(srs_td);
         tr.appendChild(date_td);
         tbody.appendChild(tr);
+
+        if (i === 0){
+            for (let j = milestones.milestone_time.length - 1; j >= 0; j--){
+                let time_obj = new Date(milestones.milestone_time[j]);
+                let milestone_tr = construct_milestone(milestones.milestone_name[j], milestones.milestone_time[j]);
+                tbody.appendChild(milestone_tr);
+            }
+        }
     }
 }
 
@@ -218,6 +276,15 @@ const reviewType = (lang) => {
     else {return "Meaning"}
 }
 
+const convertTime = (time) => {
+    console.log(time);
+    let first_half = time.substr(0,time.indexOf(","));
+    let second_half = time.substr(time.indexOf(" ") + 1, time.length);
+    first_half = first_half.replaceAll("/", "-");
+    let converted_time = new Date(first_half + "T" + second_half);
+    return converted_time;
+}
+
 // Gets the srs level from the srs value
 const srs = (srsKey) => {
     switch (srsKey){
@@ -231,6 +298,74 @@ const srs = (srsKey) => {
         case 7: return "Master";break;
         case 8: return "Enlightened";break;
         default: return "";break;
+    }
+}
+
+const get_milestones = (item_id) => {
+    let milestonesArr = ["unlock", "lesson", "guru", "burn", "resurrect"];
+    let milestones = {"milestone_name": [], "milestone_time": [],}
+    for (let i = 0; i < milestonesArr.length; i++){
+        let milestone_time = additional_info(item_id, milestonesArr[i]);
+        if (milestone_time !== null){
+            milestones.milestone_name.push(milestonesArr[i]);
+            milestones.milestone_time.push(milestone_time);
+        }
+    }
+    return milestones;
+}
+
+const construct_milestone = (milestone, time) => {
+    let milestone_tr = document.createElement("tr");
+    milestone_tr.style.backgroundColor = milestone_color(milestone)
+    milestone_tr.style.lineHeight = "1.2rem";
+    milestone_tr.style.color = "#FFF";
+    milestone_tr.style.fontWeight = "500";
+
+    let type_td = document.createElement("td");
+    type_td.innerText = "Milestone";
+    type_td.style.textAlign = "center";
+
+    let milestone_td = document.createElement("td");
+    milestone_td.innerText = milestone_text(milestone);
+    milestone_td.style.textAlign = "center";
+
+    let time_td = document.createElement("td");
+    time_td.innerText = fix_date(time);
+    time_td.style.textAlign = "center";
+
+
+    milestone_tr.appendChild(type_td);
+    milestone_tr.appendChild(document.createElement("td"));
+    milestone_tr.appendChild(milestone_td);
+    milestone_tr.appendChild(time_td);
+    return milestone_tr;
+}
+
+const fix_date = (time) => {
+    let first_half = time.substring(0,time.indexOf("T"));
+    let second_half = time.substring(time.indexOf("T") + 1, time.indexOf("."));
+    console.log(time);
+    first_half = first_half.replaceAll("-", "/");
+    return first_half + ", " + second_half;
+}
+
+const milestone_color = (milestone) => {
+    switch (milestone){
+        case "unlock": return "#A4A4A4";break;
+        case "lesson": return "#F400A2";break;
+        case "guru": return "#9D34B7";break;
+        case "burn": return "#4F4F4F";break;
+        case "resurrect": return "#FAAF0E";break;
+    }
+}
+
+const milestone_text = (milestone) => {
+    switch (milestone){
+        case "unlock": return "Unlocked";break;
+        case "lesson": return "Completed Lesson";break;
+        case "guru": return "First Guru";break;
+        case "burn": return "Burned";break;
+        case "resurrect": return "Resurrected";break;
     }
 }
 
@@ -251,13 +386,9 @@ function initiate() {
     // Checks for an item info page to display the data
     if (/\/radicals\/+/.test(url) || /\/kanji\/+/.test(url) || /\/vocabulary\/+/.test(url)){
 
-        // Gets the page's item from the URL
-        const pageItem = decodeURI(url.substring(url.lastIndexOf("/") + 1));
+        // Gets the page's item
+        pageItem = parseInt(document.querySelector('meta[name=subject_id]').content);
         const itemType = url.substring(url.indexOf("wanikani.com/") + 13, url.lastIndexOf("/"));
-        if (itemType === "radicals"){
-            itemType = "radical";
-            pageItem = document.querySelector(".radical-icon").innerText;
-        }
 
         // Adds navigation button to top bar
         const history_li = document.createElement("li");
@@ -285,7 +416,7 @@ function initiate() {
         // Table element
         const table = document.createElement("table");
         table.style.width = "100%";
-        table.style.lineHeight = "1.5em";
+        table.style.lineHeight = "1.5rem";
 
         // Body section of the table
         const tbody = document.createElement("tbody");
