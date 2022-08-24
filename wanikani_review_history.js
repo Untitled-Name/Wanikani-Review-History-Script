@@ -27,7 +27,7 @@ var itemElem;
 const url = window.location.href;
 let item, items_by_id;
 let bySlug;
-let pageItem;
+let pageItem, itemType;
 
 // Item data only needed for review sessions
 wkof.include('ItemData');
@@ -242,7 +242,11 @@ const buildTable = (itemObj, tbody) => {;
         date_td.style.textAlign = "center";
 
         let lang_td = document.createElement("td");
-        lang_td.innerText = reviewType(itemObj.language[i]);
+        if (itemType === "radical"){
+            lang_td.innerText = "Name";
+        } else {
+            lang_td.innerText = reviewType(itemObj.language[i]);
+        }
         lang_td.style.textAlign = "center";
 
         tr.appendChild(lang_td);
@@ -388,7 +392,8 @@ function initiate() {
 
         // Gets the page's item
         pageItem = parseInt(document.querySelector('meta[name=subject_id]').content);
-        const itemType = url.substring(url.indexOf("wanikani.com/") + 13, url.lastIndexOf("/"));
+        itemType = url.substring(url.indexOf("wanikani.com/") + 13, url.lastIndexOf("/"));
+        if (itemType === "radicals"){itemType = "radical"};
 
         // Adds navigation button to top bar
         const history_li = document.createElement("li");
@@ -449,7 +454,7 @@ function initiate() {
         reviewHistorySection.appendChild(sectionHead);
         reviewHistorySection.appendChild(tableDiv);
 
-        if (itemType === "radicals"){
+        if (itemType === "radical"){
             document.getElementById("information").parentNode.appendChild(reviewHistorySection);
         } else {
             document.getElementById("meaning").parentNode.appendChild(reviewHistorySection);
