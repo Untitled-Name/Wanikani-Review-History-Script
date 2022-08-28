@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WaniKani Review Answer History DEV
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.5
 // @description  Displays the history of answers for each item in review sessions
 // @author       Wantitled
 // @match        https://www.wanikani.com/*
@@ -238,7 +238,7 @@ const buildTable = (itemObj, tbody) => {;
         srs_td.style.textAlign = "center";
 
         let date_td = document.createElement("td");
-        date_td.innerText = itemObj.timestamps[i];
+        date_td.innerText = fix_date(convertTime(itemObj.timestamps[i]));
         date_td.style.textAlign = "center";
 
         let lang_td = document.createElement("td");
@@ -281,7 +281,6 @@ const reviewType = (lang) => {
 }
 
 const convertTime = (time) => {
-    console.log(time);
     let first_half = time.substr(0,time.indexOf(","));
     let second_half = time.substr(time.indexOf(" ") + 1, time.length);
     first_half = first_half.replaceAll("/", "-");
@@ -334,7 +333,8 @@ const construct_milestone = (milestone, time) => {
     milestone_td.style.textAlign = "center";
 
     let time_td = document.createElement("td");
-    time_td.innerText = fix_date(time);
+    let time_obj = new Date(time);
+    time_td.innerText = fix_date(time_obj);
     time_td.style.textAlign = "center";
 
 
@@ -346,10 +346,8 @@ const construct_milestone = (milestone, time) => {
 }
 
 const fix_date = (time) => {
-    let first_half = time.substring(0,time.indexOf("T"));
-    let second_half = time.substring(time.indexOf("T") + 1, time.indexOf("."));
-    console.log(time);
-    first_half = first_half.replaceAll("-", "/");
+    let first_half = time.toDateString();
+    let second_half = time.toLocaleTimeString()
     return first_half + ", " + second_half;
 }
 
