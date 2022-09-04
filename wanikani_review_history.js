@@ -5,6 +5,7 @@
 // @description  Displays the history of answers for each item in review sessions
 // @author       Wantitled
 // @match        https://www.wanikani.com/*
+// @require      https://gist.githubusercontent.com/IceCreamYou/8396172/raw/d6ec62ee4861e398d85daa9db3e49079bd52b7ba/damerau-levenshtein.js
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=wanikani.com
 // @grant        none
 // @license      MIT
@@ -212,7 +213,6 @@ const createHeaders = () => {
 // Creates the table rows and inserts the data for the item page table
 const buildTable = (itemObj, tbody) => {;
     let milestones = get_milestones(pageItem);
-    console.log(milestones);
     for (let i = itemObj.answers.length - 1; i >= 0; i--){
         for (let j = milestones.milestone_time.length - 1; j >= 0; j--){
             let time_obj = new Date(milestones.milestone_time[j]);
@@ -371,6 +371,64 @@ const milestone_text = (milestone) => {
     }
 }
 
+const add_synonym_freq = () => {
+
+}
+
+const get_synonyms = (item_type) => {
+    let meaning_elem;
+    if (item_type === "radical"){
+        meaning_elem = document.getElementById("information");
+    } else {
+        meaning_elem = document.getElementById("meaning");
+    }
+    let synonyms_arr = [...meaning_elem.querySelectorAll(".alternative-meaning")];
+    if (synonyms_arr.length === 4){synonyms_arr.pop()}
+    for (let elem in synonyms_arr){
+        get_synonym_text(synonyms_arr[elem]);
+    }
+}
+
+const get_synonym_text = (elem) => {
+    let h2_text = elem.querySelector("h2");
+    let synonym_elem;
+    let synonym_text;
+    let item_obj = WKAnswerHistory[itemType][pageItem];
+    console.log(h2_text.innerText);
+    if (h2_text.innerText === "PRIMARY"){
+        synonym_elem = elem.querySelector("p");
+        synonym_text = synonym_elem.innerText;
+        let total = 0;
+        for (let i = 0; i < item_obj.answers.length; i++){
+            console.log(item_obj.language[i]);
+            if (item_obj.language[i] === "en"){
+                total += compare_synonyms(item_obj.answers[i], synonym_text);
+            }
+            synonym_elem.innerText = synonym_text + " (Matches: " + total + ")";
+        }
+    } else if (h2_text.innerText === "ALTERNATIVES"){
+        synonym_elem = elem.querySelector("p");
+        synonym_text = synonym_elem.innerText.split(", ");
+        console.log(synonym_text);
+    } else if (h2_text.innerText === "USER SYNONYMS"){
+
+    }
+}
+
+const compare_synonyms = (answer, synonym) => {
+    answer = answer.toLowerCase();
+    synonym = synonym.toLowerCase();
+    let ld = distance(answer, synonym);
+    let max_ld;
+    if (synonym.length <= 3){max_ld = 0}
+    else if (synonym.length <= 5){max_ld = 1}
+    else if (synonym.length <= 7){max_ld = 2}
+    else {max_ld = 2 + Math.round(synonym.length / 7)}
+
+    if (ld <= max_ld){return 1}
+    else {return 0}
+}
+
 
 function initiate() {
     'use strict';
@@ -405,6 +463,8 @@ function initiate() {
         } else {
             document.querySelector(".page-list-header").parentNode.appendChild(history_li);
         }
+
+        get_synonyms(itemType);
 
         // Section element for the review history
         const reviewHistorySection = document.createElement("section");
